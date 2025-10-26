@@ -1,7 +1,5 @@
 # DuoMind - Dual-Mode RAG Chat Application
 
-![DuoMind Landing Page](screenshots/landing-page.svg)
-
 A powerful chat application that allows users to interact with their documents in two distinct modes. DuoMind transforms how you engage with your PDFs and DOCX files through intelligent conversation.
 
 ## 🌟 Features
