@@ -1,7 +1,8 @@
 import time
+import json
 from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from app.models.schemas import (
     RAGRequest, RAGResponse, UploadResponse, 
     HealthResponse, ErrorResponse
@@ -60,6 +61,44 @@ async def upload_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@router.post("/rag/stream")
+async def rag_query_stream(request: RAGRequest):
+    """Process RAG query with streaming response using Server-Sent Events"""
+    try:
+        if not request.query.strip():
+            raise HTTPException(status_code=400, detail="Query cannot be empty")
+        
+        def generate_stream():
+            try:
+                for chunk in rag_service.query_streaming(request.query, request.mode):
+                    # Format as Server-Sent Events
+                    data = json.dumps(chunk)
+                    yield f"data: {data}\n\n"
+                    
+                # Send final event to close the stream
+                yield f"data: {json.dumps({'type': 'close'})}\n\n"
+                
+            except Exception as e:
+                # Send error event
+                error_data = {
+                    "type": "error",
+                    "content": f"Stream error: {str(e)}"
+                }
+                yield f"data: {json.dumps(error_data)}\n\n"
+        
+        return StreamingResponse(
+            generate_stream(),
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Content-Type": "text/plain; charset=utf-8"
+            }
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing streaming query: {str(e)}")
 
 @router.post("/rag", response_model=RAGResponse)
 async def rag_query(request: RAGRequest):

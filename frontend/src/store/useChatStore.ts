@@ -4,6 +4,7 @@ import type { ChatState, Message, ChatMode } from '../types';
 
 interface ChatActions {
   addMessage: (content: string, isUser: boolean, mode?: ChatMode, sources?: string[]) => void;
+  updateLastMessage: (content: string) => void;
   setMode: (mode: ChatMode) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -47,6 +48,19 @@ export const useChatStore = create<ChatStore>()(
             messages: updatedMessages,
             error: null, // Clear error on new message
           };
+        });
+      },
+
+      updateLastMessage: (content: string) => {
+        set((state) => {
+          const messages = [...state.messages];
+          if (messages.length > 0 && !messages[messages.length - 1].isUser) {
+            messages[messages.length - 1] = {
+              ...messages[messages.length - 1],
+              content,
+            };
+          }
+          return { messages };
         });
       },
 

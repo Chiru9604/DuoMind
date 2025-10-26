@@ -62,6 +62,72 @@ export const api = {
     return response.data;
   },
 
+  // RAG query with streaming
+  ragQueryStream: async (request: RAGRequest, onChunk: (chunk: any) => void, onError?: (error: string) => void, onComplete?: () => void): Promise<void> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/rag/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No response body reader available');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Process complete lines
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                
+                if (data.type === 'close') {
+                  onComplete?.();
+                  return;
+                } else if (data.type === 'error') {
+                  onError?.(data.content || 'Stream error occurred');
+                  return;
+                } else {
+                  onChunk(data);
+                }
+              } catch (parseError) {
+                console.warn('Failed to parse SSE data:', line);
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (error) {
+      console.error('Streaming error:', error);
+      onError?.(error instanceof Error ? error.message : 'Streaming failed');
+    }
+  },
+
   // Health check
   healthCheck: async (): Promise<{ status: string; timestamp: string }> => {
     const response = await apiClient.get('/health');

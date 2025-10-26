@@ -194,6 +194,25 @@ Engage with this query as DuoMind Pro. Analyze the context deeply, provide your 
                 # Try with fallback model
                 return self.generate_response(messages, use_fallback=True)
             raise e
+
+    def generate_streaming_response(self, messages: List, use_fallback: bool = False):
+        """Generate streaming response with token-by-token output"""
+        try:
+            llm = self.fallback_llm if use_fallback else self.llm
+            
+            # Use the stream method for token-by-token generation
+            for chunk in llm.stream(messages):
+                if hasattr(chunk, 'content') and chunk.content:
+                    yield chunk.content
+                    # Add a small delay to slow down token generation for better readability
+                    time.sleep(0.05)  # 50ms delay between tokens
+                    
+        except Exception as e:
+            if not use_fallback:
+                # Try with fallback model
+                yield from self.generate_streaming_response(messages, use_fallback=True)
+            else:
+                yield f"Error: {str(e)}"
     
     def query(self, query: str, mode: ChatMode) -> Dict[str, Any]:
         """Process RAG query with specified mode and enhanced context merging"""
@@ -311,3 +330,93 @@ Engage with this query as DuoMind Pro. Analyze the context deeply, provide your 
         merged_sections.append(current_section)
         
         return merged_sections
+
+    def query_streaming(self, query: str, mode: ChatMode):
+        """Process RAG query with streaming response"""
+        start_time = time.time()
+        
+        try:
+            # Retrieve relevant documents with increased top_k for better coverage
+            documents = self.vector_store.similarity_search(query, k=max(settings.top_k_chunks, 5))
+            
+            if not documents:
+                yield {
+                    "type": "error",
+                    "content": "No relevant documents found. Please upload some documents first.",
+                    "mode": mode,
+                    "sources": [],
+                    "processing_time": time.time() - start_time
+                }
+                return
+            
+            # Enhanced context merging: Group related chunks and merge logically
+            context_parts = []
+            sources = []
+            
+            # Group documents by similarity and merge related content
+            merged_sections = self._merge_related_chunks(documents)
+            
+            for i, section in enumerate(merged_sections):
+                context_parts.append(f"[Document Section {i+1}]\n{section['content']}")
+                
+                # Collect all sources from merged chunks
+                section_sources = []
+                for metadata in section['metadata_list']:
+                    filename = metadata.get('filename', 'Unknown Document')
+                    chunk_id = metadata.get('chunk_id', 0)
+                    section_sources.append(f"{filename} (Chunk {chunk_id + 1})")
+                
+                # Create a consolidated source reference
+                if len(section_sources) == 1:
+                    sources.append(section_sources[0])
+                else:
+                    sources.append(f"Multiple sections: {', '.join(section_sources[:3])}")
+            
+            context = "\n\n".join(context_parts)
+            
+            # Generate prompt based on mode
+            if mode == ChatMode.NORMAL:
+                messages = self.get_normal_prompt(context, query)
+            else:  # PRO mode
+                messages = self.get_pro_prompt(context, query)
+            
+            # Send metadata first
+            yield {
+                "type": "metadata",
+                "mode": mode,
+                "sources": sources,
+                "processing_time": time.time() - start_time
+            }
+            
+            # Stream the response
+            for chunk in self.generate_streaming_response(messages):
+                yield {
+                    "type": "token",
+                    "content": chunk
+                }
+            
+            # Send completion signal
+            yield {
+                "type": "done",
+                "processing_time": time.time() - start_time
+            }
+            
+        except Exception as e:
+            # Check if it's an API key related error
+            error_message = str(e)
+            if "api_key" in error_message.lower() or "unauthorized" in error_message.lower() or "authentication" in error_message.lower():
+                yield {
+                    "type": "error",
+                    "content": "Error: Invalid or missing Groq API key. Please check your .env file and ensure you have a valid Groq API key set. You can get one from https://console.groq.com/keys",
+                    "mode": mode,
+                    "sources": [],
+                    "processing_time": time.time() - start_time
+                }
+            else:
+                yield {
+                    "type": "error",
+                    "content": f"Error processing query: {str(e)}",
+                    "mode": mode,
+                    "sources": [],
+                    "processing_time": time.time() - start_time
+                }

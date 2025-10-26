@@ -16,6 +16,20 @@ export interface ChatState {
   error: string | null;
 }
 
+export interface Session {
+  id: string;
+  title: string;
+  messages: Message[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SessionState {
+  sessions: Session[];
+  currentSessionId: string | null;
+  isLoading: boolean;
+}
+
 export interface UploadResponse {
   message: string;
   filename: string;
