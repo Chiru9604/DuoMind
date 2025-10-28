@@ -10,10 +10,16 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
   const { mode } = useChatStore();
 
   const formatTime = (timestamp: Date) => {
-    return new Date(timestamp).toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
+    // Handle invalid dates gracefully
+    if (!timestamp || !(timestamp instanceof Date) || isNaN(timestamp.getTime())) {
+      return 'Invalid time';
+    }
+    
+    return new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).format(timestamp);
   };
 
   if (message.isUser) {
@@ -64,32 +70,35 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
               <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium">
                 {message.content}
               </p>
-              
-              {/* Sources */}
-              {message.sources && message.sources.length > 0 && (
-                <div className="mt-4 pt-3 border-t border-gray-200/50 dark:border-gray-600/50">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-medium">
-                    Sources:
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {message.sources.map((source, index) => (
-                      <span
-                        key={index}
-                        className={`
-                          text-xs px-3 py-1.5 rounded-full font-medium transition-all duration-200 hover:scale-105
-                          ${mode === 'pro'
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                            : 'bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700/50'
-                          }
-                        `}
-                      >
-                        {source}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
+
+            {/* Citation Cards */}
+            {/* Removed citation functionality */}
+              
+            {/* Sources (always show as tags) */}
+            {message.sources && message.sources.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-gray-200/50 dark:border-gray-600/50">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-medium">
+                  Sources:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {message.sources.map((source, index) => (
+                    <div
+                      key={`${message.id}-source-${index}-${source}`}
+                      className={`
+                        text-xs px-3 py-1.5 rounded-full font-medium
+                        ${mode === 'pro'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : 'bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700/50'
+                        }
+                      `}
+                    >
+                      {source}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             
             {/* Timestamp and Mode */}
             <div className="flex items-center gap-3 mt-2">

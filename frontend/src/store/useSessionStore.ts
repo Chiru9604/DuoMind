@@ -271,11 +271,11 @@ export const useSessionStore = create<SessionStore>()(
           if (parsed.state?.sessions) {
             parsed.state.sessions = parsed.state.sessions.map((session: any) => ({
               ...session,
-              createdAt: new Date(session.createdAt),
-              updatedAt: new Date(session.updatedAt),
+              createdAt: session.createdAt ? new Date(session.createdAt) : new Date(),
+              updatedAt: session.updatedAt ? new Date(session.updatedAt) : new Date(),
               messages: session.messages.map((msg: any) => ({
                 ...msg,
-                timestamp: new Date(msg.timestamp)
+                timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date()
               }))
             }));
           }

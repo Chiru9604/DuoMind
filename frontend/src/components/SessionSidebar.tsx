@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useSessionStore } from '../store/useSessionStore';
 import { useChatStore } from '../store/useChatStore';
-import type { ChatMode } from '../types/index';
+import type { ChatMode } from '../types';
 import ConfirmationModal from './ConfirmationModal';
 import { 
   Plus, 
@@ -121,7 +121,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({ isOpen, onToggle
   return (
     <>
       <div className={`
-        fixed left-0 top-0 h-full w-80 border-r flex flex-col z-40 transition-all duration-300
+        fixed left-0 top-0 h-full w-80 border-r flex flex-col z-40 mode-transition-bg no-flash
         ${mode === 'pro'
           ? 'bg-gradient-to-b from-gray-900 via-black to-gray-900 border-gray-800/50'
           : 'bg-gradient-to-b from-gray-50 via-white to-gray-100 border-gray-200/50'
@@ -129,7 +129,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({ isOpen, onToggle
       `}>
       {/* Header */}
       <div className={`
-        p-4 border-b backdrop-blur-sm
+        p-4 border-b backdrop-blur-sm mode-transition-bg
         ${mode === 'pro'
           ? 'border-gray-800/50 bg-black/20'
           : 'border-gray-200/50 bg-white/20'
@@ -353,7 +353,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({ isOpen, onToggle
       {/* Footer */}
       {sessions.length > 0 && (
         <div className={`
-          p-4 border-t backdrop-blur-sm
+          p-4 border-t backdrop-blur-sm mode-transition-bg
           ${mode === 'pro'
             ? 'border-gray-800/50 bg-black/20'
             : 'border-gray-200/50 bg-white/20'

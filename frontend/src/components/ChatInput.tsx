@@ -1,26 +1,36 @@
 import React, { useState, useRef } from 'react';
-import { Send, Paperclip, Loader2 } from 'lucide-react';
+import { Send, Paperclip, Loader2, AlertCircle } from 'lucide-react';
 import { useChatStore } from '../store/useChatStore';
+import type { DocumentInfo } from '../types';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
   onFileUpload: (file: File) => void;
   disabled?: boolean;
+  activeDocuments?: DocumentInfo[];
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({ 
   onSendMessage, 
   onFileUpload, 
-  disabled = false 
+  disabled = false,
+  activeDocuments = []
 }) => {
   const [input, setInput] = useState('');
   const [isDragging, setIsDragging] = useState(false);
+  const [showUploadPrompt, setShowUploadPrompt] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { mode, isLoading } = useChatStore();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (input.trim() && !disabled && !isLoading) {
+      // Check if documents are uploaded
+      if (activeDocuments.length === 0) {
+        setShowUploadPrompt(true);
+        setTimeout(() => setShowUploadPrompt(false), 3000); // Hide after 3 seconds
+        return;
+      }
       onSendMessage(input.trim());
       setInput('');
     }
@@ -72,6 +82,20 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         ? 'border-gray-800/50 bg-black/20'
         : 'border-gray-200/50 bg-white/50'
     }`}>
+      {/* Upload Prompt Notification */}
+      {showUploadPrompt && (
+        <div className={`absolute top-2 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg border transition-all duration-300 animate-in slide-in-from-top-2 ${
+          mode === 'pro'
+            ? 'bg-orange-900/90 border-orange-700/50 text-orange-200 backdrop-blur-sm'
+            : 'bg-orange-50 border-orange-200 text-orange-800'
+        }`}>
+          <div className="flex items-center gap-2 text-sm">
+            <AlertCircle className="w-4 h-4" />
+            <span>Please upload a document first to start chatting</span>
+          </div>
+        </div>
+      )}
+
       {/* Drag and Drop Overlay */}
       {isDragging && (
         <div className={`absolute inset-0 z-50 flex items-center justify-center backdrop-blur-sm transition-all duration-300 rounded-2xl ${

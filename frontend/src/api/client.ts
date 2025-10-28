@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { RAGRequest, RAGResponse, UploadResponse, ApiError } from '../types';
+import type { RAGRequest, RAGResponse, UploadResponse, ApiError, DocumentsListResponse } from '../types';
 
 const API_BASE_URL = 'http://localhost:8000/api';
 
@@ -51,8 +51,17 @@ export const api = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: 60000, // Increase timeout to 60 seconds for file uploads
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
     });
     
+    return response.data;
+  },
+
+  // Get all documents
+  getDocuments: async (): Promise<DocumentsListResponse> => {
+    const response = await apiClient.get('/documents');
     return response.data;
   },
 

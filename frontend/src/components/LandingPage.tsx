@@ -201,7 +201,7 @@ const LandingPage: React.FC = () => {
           <div className="flex justify-center mb-8">
             <div className="flex items-center gap-2">
               {[...Array(5)].map((_, i) => (
-                <Star key={i} className="w-8 h-8 text-yellow-400 fill-current" />
+                <Star key={`star-${i}`} className="w-8 h-8 text-yellow-400 fill-current" />
               ))}
             </div>
           </div>

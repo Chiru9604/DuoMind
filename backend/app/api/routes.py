@@ -15,8 +15,8 @@ router = APIRouter()
 
 # Service instances
 document_processor = DocumentProcessor()
-vector_store = VectorStore()
-rag_service = RAGService()
+vector_store = VectorStore(use_advanced_retriever=True)  # Enable advanced hybrid retriever with DPR and neural QA
+rag_service = RAGService(use_advanced_retriever=True)  # Enable advanced retrieval and neural QA
 
 @router.post("/upload", response_model=UploadResponse)
 async def upload_file(file: UploadFile = File(...)):
@@ -35,10 +35,11 @@ async def upload_file(file: UploadFile = File(...)):
         # Process document
         text, chunks = document_processor.process_file(content, file.filename)
         
-        # Clear previous documents to ensure only the current document is used
-        vector_store.clear_collection()
+        # Generate unique document ID
+        import uuid
+        document_id = str(uuid.uuid4())
         
-        # Store in vector database with enhanced metadata
+        # Store in vector database with enhanced metadata including document_id
         upload_timestamp = datetime.now().isoformat()
         chunks_created = vector_store.add_documents(
             texts=chunks,
@@ -47,14 +48,17 @@ async def upload_file(file: UploadFile = File(...)):
                 "chunk_id": i,
                 "upload_timestamp": upload_timestamp,
                 "document_type": "user_uploaded",
-                "total_chunks": len(chunks)
-            } for i in range(len(chunks))]
+                "total_chunks": len(chunks),
+                "document_id": document_id
+            } for i in range(len(chunks))],
+            document_id=document_id
         )
         
         return UploadResponse(
             message="File uploaded and processed successfully",
             filename=file.filename,
-            chunks_created=chunks_created
+            chunks_created=chunks_created,
+            document_id=document_id
         )
         
     except ValueError as e:
@@ -107,8 +111,8 @@ async def rag_query(request: RAGRequest):
         if not request.query.strip():
             raise HTTPException(status_code=400, detail="Query cannot be empty")
         
-        # Process query
-        result = rag_service.query(request.query, request.mode)
+        # Process query with active document IDs
+        result = rag_service.query(request.query, request.mode, request.active_document_ids)
         
         return RAGResponse(**result)
         

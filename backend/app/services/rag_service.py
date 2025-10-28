@@ -1,6 +1,6 @@
 import time
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from langchain_groq import ChatGroq
 from langchain.schema import HumanMessage, SystemMessage
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -11,8 +11,15 @@ from app.services.vector_store import VectorStore
 logger = logging.getLogger(__name__)
 
 class RAGService:
-    def __init__(self):
-        self.vector_store = VectorStore()
+    def __init__(self, use_advanced_retriever: bool = True):
+        """
+        Initialize RAG service with optional advanced retriever and neural QA
+        
+        Args:
+            use_advanced_retriever: Whether to use the advanced hybrid retriever with DPR and neural QA
+        """
+        self.vector_store = VectorStore(use_advanced_retriever=use_advanced_retriever)
+        self.use_advanced_retriever = use_advanced_retriever
         self.llm = ChatGroq(
             groq_api_key=settings.groq_api_key,
             model_name="llama3-8b-8192",
@@ -25,10 +32,15 @@ class RAGService:
             temperature=0.1,
             timeout=settings.timeout_seconds
         )
+        
+        logger.info(f"RAG Service initialized with advanced retriever: {use_advanced_retriever}")
+        if use_advanced_retriever:
+            retriever_info = self.vector_store.get_retriever_info()
+            logger.info(f"Retriever configuration: {retriever_info}")
     
     def get_normal_prompt(self, context: str, query: str) -> List[Dict[str, str]]:
         """Generate prompt for normal mode with enhanced structured response format"""
-        system_prompt = """You are a precise research assistant that provides structured, document-grounded answers following a specific template.
+        system_prompt = """You are an advanced research analyst that provides sophisticated, document-grounded insights following an enhanced analytical framework.
 
 CRITICAL RULES:
 - Base answers ONLY on the provided document context
@@ -37,41 +49,56 @@ CRITICAL RULES:
 - Use active voice and maintain academic tone
 - Keep responses factual and evidence-based
 
-🧩 REQUIRED RESPONSE FORMAT:
+🧩 ENHANCED RESPONSE FORMAT:
 
-**1. Summary**
-→ Briefly answer the question directly (aim for 2-3 sentences)
+**1. Summary** (NARRATIVE + INTERPRETIVE)
+→ Don't just summarize - tell the story behind the findings (aim for 2-3 sentences)
+→ Weave together the key insights into a coherent narrative
+→ Interpret what the findings mean in context, not just what they are
+→ Connect disparate pieces of information into a unified understanding
 → Avoid filler words like "According to the document"
-→ Mention the key insight or finding clearly
 
-**2. Explanation**
-→ Expand on the summary using document evidence (write 3-5 short paragraphs)
-→ Quote short fragments naturally and integrate them
-→ Explain *why or how* — not just *what*
-→ Combine multiple relevant sections into one cohesive explanation
+**2. Explanation** (CAUSE-EFFECT REASONING)
+→ Go beyond describing points - explain the underlying mechanisms (write 3-5 short paragraphs)
+→ Focus on WHY things happen, HOW processes work, and WHAT leads to what
+→ Trace causal relationships and logical connections between concepts
+→ Show how different factors influence outcomes
+→ Explain the reasoning behind conclusions, not just the conclusions themselves
+→ Use transitional phrases like "This occurs because...", "As a result...", "This leads to..."
 → Keep paragraphs short (2–3 lines each)
 
-**3. Key Technical Details**
-→ Mention any numerical or structural details from the documents:
-   • Numbers, measurements, dimensions
-   • Technical specifications or parameters
-   • Mechanisms, processes, or methodologies
-→ Use bullet points for clarity
+**3. Key Technical Details** (CONTEXT + MEANING)
+→ Don't just list data - explain what the numbers and specifications actually mean:
+   • Numbers, measurements, dimensions → What do these values indicate about performance/significance?
+   • Technical specifications → How do these specs relate to functionality or outcomes?
+   • Mechanisms, processes → What is the practical importance of these technical aspects?
+→ Provide brief context for why each technical detail matters
+→ Use bullet points but include interpretive context for each point
 
-**4. Limitations or Missing Info**
-→ If the answer cannot be fully derived from the document, clearly say so
-→ Suggest where in the document this might be partially addressed
+**4. Limitations** (CRITIQUE WITH INSIGHT)
+→ Don't just note missing information - provide analytical critique
+→ Identify methodological gaps, potential biases, or analytical blind spots
+→ Suggest what additional information would strengthen the analysis
+→ Point out assumptions that may not hold universally
+→ Discuss how limitations might affect the reliability or applicability of findings
+→ Offer thoughtful assessment of what's uncertain or incomplete
 
-**5. Closing Summary**
-→ End with a one-line synthesis — the "so what?" moment
+**5. Closing** (BROADER RELEVANCE)
+→ Don't just restate findings - zoom out to show wider significance
+→ Connect the specific findings to larger themes, trends, or implications
+→ Discuss potential applications, consequences, or future directions
+→ Show how this knowledge fits into a bigger picture
+→ End with insight about what this means for the field, practice, or understanding
 
-✅ STYLE RULES:
-- Use active voice
-- Keep paragraphs short (2–3 lines each)
-- Avoid repeating section names excessively
+✅ ENHANCED STYLE RULES:
+- Use active voice and analytical language
+- Focus on interpretation, not just description
+- Show relationships between concepts
+- Explain significance and implications
+- Connect specific details to broader meanings
 - Never add external information not found in the document
 - Always paraphrase instead of copying long quotes
-- Maintain academic but readable tone (no fluff)"""
+- Maintain sophisticated but accessible analytical tone"""
 
         user_prompt = f"""Context from documents:
 {context}
@@ -214,25 +241,70 @@ Engage with this query as DuoMind Pro. Analyze the context deeply, provide your 
             else:
                 yield f"Error: {str(e)}"
     
-    def query(self, query: str, mode: ChatMode) -> Dict[str, Any]:
-        """Process RAG query with specified mode and enhanced context merging"""
+    def query(self, query: str, mode: ChatMode, active_document_ids: List[str] = None, use_neural_qa: bool = None) -> Dict[str, Any]:
+        """
+        Process RAG query with specified mode and enhanced context merging
+        
+        Args:
+            query: User's question
+            mode: Chat mode (NORMAL or PRO)
+            active_document_ids: Optional list of document IDs to filter by
+            use_neural_qa: Whether to use neural QA layer (defaults to advanced retriever setting)
+        """
         start_time = time.time()
         
+        # Default to using neural QA if advanced retriever is enabled
+        if use_neural_qa is None:
+            use_neural_qa = self.use_advanced_retriever
+        
+        # Convert ChatMode to string for vector store
+        mode_str = mode.value.lower() if hasattr(mode, 'value') else str(mode).lower()
+        
         try:
-            # Retrieve relevant documents with increased top_k for better coverage
-            documents = self.vector_store.similarity_search(query, k=max(settings.top_k_chunks, 5))
+            # Use neural QA-enhanced search if available and requested
+            if use_neural_qa and self.use_advanced_retriever:
+                logger.info(f"Using neural QA-enhanced search for streaming with mode: {mode_str}")
+                qa_results = self.vector_store.similarity_search_with_qa(
+                    query, 
+                    k=max(settings.top_k_chunks, 5),
+                    document_ids=active_document_ids,
+                    mode=mode_str
+                )
+                # Extract the retrieval results from the QA response
+                documents = qa_results.get("retrieval_results", []) if qa_results else []
+            else:
+                logger.info(f"Using standard hybrid search with mode: {mode_str}")
+                documents = self.vector_store.similarity_search(
+                    query, 
+                    k=max(settings.top_k_chunks, 5),
+                    document_ids=active_document_ids,
+                    mode=mode_str
+                )
             
             if not documents:
-                return {
-                    "answer": "No relevant documents found. Please upload some documents first.",
-                    "mode": mode,
-                    "sources": [],
-                    "processing_time": time.time() - start_time
-                }
+                if active_document_ids:
+                    return {
+                        "answer": "No relevant content found in the selected documents. Try selecting different documents or uploading new ones.",
+                        "mode": mode,
+                        "sources": [],
+                        "processing_time": time.time() - start_time,
+                        "retrieval_method": "neural_qa" if use_neural_qa else "standard",
+                        "fusion_weights": {}
+                    }
+                else:
+                    return {
+                        "answer": "No relevant documents found. Please upload some documents first.",
+                        "mode": mode,
+                        "sources": [],
+                        "processing_time": time.time() - start_time,
+                        "retrieval_method": "neural_qa" if use_neural_qa else "standard",
+                        "fusion_weights": {}
+                    }
             
             # Enhanced context merging: Group related chunks and merge logically
             context_parts = []
             sources = []
+            fusion_weights = {}
             
             # Group documents by similarity and merge related content
             merged_sections = self._merge_related_chunks(documents)
@@ -242,7 +314,7 @@ Engage with this query as DuoMind Pro. Analyze the context deeply, provide your 
                 
                 # Collect all sources from merged chunks
                 section_sources = []
-                for metadata in section['metadata_list']:
+                for j, metadata in enumerate(section['metadata_list']):
                     filename = metadata.get('filename', 'Unknown Document')
                     chunk_id = metadata.get('chunk_id', 0)
                     section_sources.append(f"{filename} (Chunk {chunk_id + 1})")
@@ -252,6 +324,10 @@ Engage with this query as DuoMind Pro. Analyze the context deeply, provide your 
                     sources.append(section_sources[0])
                 else:
                     sources.append(f"Multiple sections: {', '.join(section_sources[:3])}")
+            
+            # Extract fusion weights from first document if available
+            if documents and 'fusion_weights' in documents[0]:
+                fusion_weights = documents[0]['fusion_weights']
             
             context = "\n\n".join(context_parts)
             
@@ -268,7 +344,9 @@ Engage with this query as DuoMind Pro. Analyze the context deeply, provide your 
                 "answer": answer,
                 "mode": mode,
                 "sources": sources,
-                "processing_time": time.time() - start_time
+                "processing_time": time.time() - start_time,
+                "retrieval_method": "neural_qa" if use_neural_qa else "standard",
+                "fusion_weights": fusion_weights
             }
             
         except Exception as e:
@@ -279,14 +357,17 @@ Engage with this query as DuoMind Pro. Analyze the context deeply, provide your 
                     "answer": "Error: Invalid or missing Groq API key. Please check your .env file and ensure you have a valid Groq API key set. You can get one from https://console.groq.com/keys",
                     "mode": mode,
                     "sources": [],
-                    "processing_time": time.time() - start_time
+                    "processing_time": time.time() - start_time,
+                    "retrieval_method": "neural_qa" if use_neural_qa else "standard"
                 }
             
+            logger.error(f"Error in RAG query: {str(e)}")
             return {
                 "answer": f"Error processing query: {str(e)}",
                 "mode": mode,
                 "sources": [],
-                "processing_time": time.time() - start_time
+                "processing_time": time.time() - start_time,
+                "retrieval_method": "neural_qa" if use_neural_qa else "standard"
             }
     
     def _merge_related_chunks(self, documents: List[Dict]) -> List[Dict]:
@@ -331,13 +412,42 @@ Engage with this query as DuoMind Pro. Analyze the context deeply, provide your 
         
         return merged_sections
 
-    def query_streaming(self, query: str, mode: ChatMode):
-        """Process RAG query with streaming response"""
+    def query_streaming(self, query: str, mode: ChatMode, use_neural_qa: bool = None):
+        """
+        Process RAG query with streaming response
+        
+        Args:
+            query: User's question
+            mode: Chat mode (NORMAL or PRO)
+            use_neural_qa: Whether to use neural QA layer (defaults to advanced retriever setting)
+        """
         start_time = time.time()
         
+        # Default to using neural QA if advanced retriever is enabled
+        if use_neural_qa is None:
+            use_neural_qa = self.use_advanced_retriever
+        
+        # Convert ChatMode to string for vector store
+        mode_str = mode.value.lower() if hasattr(mode, 'value') else str(mode).lower()
+        
         try:
-            # Retrieve relevant documents with increased top_k for better coverage
-            documents = self.vector_store.similarity_search(query, k=max(settings.top_k_chunks, 5))
+            # Use neural QA-enhanced search if available and requested
+            if use_neural_qa and self.use_advanced_retriever:
+                logger.info(f"Using neural QA-enhanced search for streaming with mode: {mode_str}")
+                qa_results = self.vector_store.similarity_search_with_qa(
+                    query, 
+                    k=max(settings.top_k_chunks, 5),
+                    mode=mode_str
+                )
+                # Extract the retrieval results from the QA response
+                documents = qa_results.get("retrieval_results", []) if qa_results else []
+            else:
+                logger.info(f"Using standard hybrid search for streaming with mode: {mode_str}")
+                documents = self.vector_store.similarity_search(
+                    query, 
+                    k=max(settings.top_k_chunks, 5),
+                    mode=mode_str
+                )
             
             if not documents:
                 yield {
@@ -345,13 +455,16 @@ Engage with this query as DuoMind Pro. Analyze the context deeply, provide your 
                     "content": "No relevant documents found. Please upload some documents first.",
                     "mode": mode,
                     "sources": [],
-                    "processing_time": time.time() - start_time
+                    "processing_time": time.time() - start_time,
+                    "retrieval_method": "neural_qa" if use_neural_qa else "standard",
+                    "fusion_weights": {}
                 }
                 return
             
             # Enhanced context merging: Group related chunks and merge logically
             context_parts = []
             sources = []
+            fusion_weights = {}
             
             # Group documents by similarity and merge related content
             merged_sections = self._merge_related_chunks(documents)
@@ -361,7 +474,7 @@ Engage with this query as DuoMind Pro. Analyze the context deeply, provide your 
                 
                 # Collect all sources from merged chunks
                 section_sources = []
-                for metadata in section['metadata_list']:
+                for j, metadata in enumerate(section['metadata_list']):
                     filename = metadata.get('filename', 'Unknown Document')
                     chunk_id = metadata.get('chunk_id', 0)
                     section_sources.append(f"{filename} (Chunk {chunk_id + 1})")
@@ -371,6 +484,10 @@ Engage with this query as DuoMind Pro. Analyze the context deeply, provide your 
                     sources.append(section_sources[0])
                 else:
                     sources.append(f"Multiple sections: {', '.join(section_sources[:3])}")
+            
+            # Extract fusion weights from first document if available
+            if documents and 'fusion_weights' in documents[0]:
+                fusion_weights = documents[0]['fusion_weights']
             
             context = "\n\n".join(context_parts)
             
@@ -385,7 +502,9 @@ Engage with this query as DuoMind Pro. Analyze the context deeply, provide your 
                 "type": "metadata",
                 "mode": mode,
                 "sources": sources,
-                "processing_time": time.time() - start_time
+                "processing_time": time.time() - start_time,
+                "retrieval_method": "neural_qa" if use_neural_qa else "standard",
+                "fusion_weights": fusion_weights
             }
             
             # Stream the response
@@ -398,19 +517,23 @@ Engage with this query as DuoMind Pro. Analyze the context deeply, provide your 
             # Send completion signal
             yield {
                 "type": "done",
-                "processing_time": time.time() - start_time
+                "processing_time": time.time() - start_time,
+                "retrieval_method": "neural_qa" if use_neural_qa else "standard",
+                "fusion_weights": fusion_weights
             }
             
         except Exception as e:
             # Check if it's an API key related error
             error_message = str(e)
+            logger.error(f"Error in streaming RAG query: {str(e)}")
             if "api_key" in error_message.lower() or "unauthorized" in error_message.lower() or "authentication" in error_message.lower():
                 yield {
                     "type": "error",
                     "content": "Error: Invalid or missing Groq API key. Please check your .env file and ensure you have a valid Groq API key set. You can get one from https://console.groq.com/keys",
                     "mode": mode,
                     "sources": [],
-                    "processing_time": time.time() - start_time
+                    "processing_time": time.time() - start_time,
+                    "retrieval_method": "neural_qa" if use_neural_qa else "standard"
                 }
             else:
                 yield {
@@ -418,5 +541,6 @@ Engage with this query as DuoMind Pro. Analyze the context deeply, provide your 
                     "content": f"Error processing query: {str(e)}",
                     "mode": mode,
                     "sources": [],
-                    "processing_time": time.time() - start_time
+                    "processing_time": time.time() - start_time,
+                    "retrieval_method": "neural_qa" if use_neural_qa else "standard"
                 }

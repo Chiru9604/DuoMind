@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import router
 from app.api import document_management
+from app.api import retrieval_info  # Import the new retrieval info endpoints
 from app.core.config import settings
 
 app = FastAPI(
@@ -22,6 +23,7 @@ app.add_middleware(
 # Include API routes
 app.include_router(router, prefix="/api")
 app.include_router(document_management.router, prefix="/api")
+app.include_router(retrieval_info.router, prefix="/api")  # Register the new retrieval info endpoints
 
 @app.get("/")
 async def root():
