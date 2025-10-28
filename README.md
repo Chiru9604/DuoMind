@@ -2,6 +2,12 @@
 
 DuoMind is a sophisticated document intelligence platform that revolutionizes how you interact with your documents. Built with cutting-edge AI technology, it offers dual conversation modes and advanced retrieval capabilities for comprehensive document analysis.
 
+## Screenshots
+
+<img width="1916" height="933" alt="image" src="https://github.com/user-attachments/assets/7f2bf5b7-c1b5-479a-a430-530238d0b0e5" />
+<img width="1919" height="927" alt="image" src="https://github.com/user-attachments/assets/4e9f48d1-34d2-4c3e-935b-437a4b05a728" />
+<img width="1918" height="922" alt="image" src="https://github.com/user-attachments/assets/fef12b51-752b-4363-b5f2-4c83d3e4c9a3" />
+
 ## 🌟 Key Features
 
 ### 🧠 Dual Intelligence Modes
